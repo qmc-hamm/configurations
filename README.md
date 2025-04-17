@@ -16,20 +16,43 @@ uv pip install -e .
 
 ## Usage
 
-The `configurations` tool provides a command-line interface for managing atomic configurations:
+The `configurations` tool provides a command-line interface for creating atomic configurations from xyz files in a structured directory format.
+
+### Creating Configurations
+
+The `create` command processes xyz files from a directory structure that follows this pattern:
+```
+data_dir/
+    P{pressure}/
+        T{temperature}/
+            *.xyz
+```
+
+Where:
+- `P{pressure}` directories contain pressure values (e.g., `P225` for 225 GPa)
+- `T{temperature}` directories contain temperature values (e.g., `T1000` for 1000 K)
+- Each temperature directory contains xyz files with atomic configurations
+
+To create configurations:
 
 ```bash
-# List available commands
-configurations --help
+# Create configurations from a directory structure
+configurations create /path/to/data_dir
+```
 
-# Create a new configuration
-configurations create --name my_config --atoms "H2O"
+The tool will:
+1. Process each pressure directory (P*)
+2. For each pressure, process temperature directories (T*)
+3. Create configurations from all xyz files found
+4. Automatically extract pressure and temperature values from directory names
+5. Print information about each configuration as it's created
 
-# List all configurations
-configurations list
-
-# View details of a specific configuration
-configurations show my_config
+Example output:
+```
+Configuration: config1.xyz
+Pressure: 225 GPa
+Temperature: 1000 K
+Atoms: H2O
 ```
 
 ## Development
