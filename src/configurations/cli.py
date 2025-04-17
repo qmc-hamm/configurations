@@ -12,7 +12,11 @@ from pathlib import Path
 from .configuration import Configuration
 from .models import ConfigurationMeta
 
-app = typer.Typer(help="Manage atomic configurations")
+app = typer.Typer(
+    name="configurations",
+    help="Manage atomic configurations",
+    add_completion=False
+)
 console = Console()
 
 def parse_pressure_from_dir(dir_name: str) -> int:
@@ -44,7 +48,9 @@ def process_xyz_file(file_path: Path, pressure: int, temperature: int):
 
 @app.command()
 def create(
-    data_dir: str = typer.Argument(..., help="Path to the data directory containing P*/T* subdirectories")
+    data_dir: str = typer.Argument(
+        help="Path to the data directory containing P*/T* subdirectories (e.g. './data')"
+    )
 ):
     """Create configurations from xyz files in a directory structure.
     
@@ -53,6 +59,9 @@ def create(
         P{pressure}/
             T{temperature}/
                 *.xyz
+    
+    Example usage:
+        configurations create ./data
     """
     try:
         data_path = Path(data_dir)
@@ -90,6 +99,10 @@ def create(
     except Exception as e:
         rprint(f"[red]Error creating configurations: {str(e)}[/red]")
         raise typer.Exit(1)
+@app.command()
+def list():
+    """List all configurations."""
+    rprint("Listing all configurations...")
 
 if __name__ == "__main__":
     app() 
