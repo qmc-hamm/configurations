@@ -27,7 +27,7 @@ share/python-wheels/
 MANIFEST
 
 # Project specific
-data/  # Directory containing atomic configurations
+data/  
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
