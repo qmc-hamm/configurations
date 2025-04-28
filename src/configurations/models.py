@@ -9,4 +9,6 @@ class State(str, Enum):
 class ConfigurationMeta(BaseModel):
     pressure: Optional[int] = None
     temperature: Optional[int] = None
-    state: Optional[State] = None 
+    state: Optional[State] = None
+    MD_type: Optional[str] = None
+    
