@@ -175,3 +175,7 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+#hdf5
+*.hdf5
+*.QMC_configurations
