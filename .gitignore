@@ -178,3 +178,4 @@ cython_debug/
 
 #hdf5
 *.hdf5
+*.QMC_configurations
