@@ -25,6 +25,10 @@ class Configuration:
             ))
         return capture.get() 
     
+    @property
+    def s3_key(self) -> str:
+        return f"P{self.meta.pressure}/T{self.meta.temperature}/{self.xyz_path.name}"
+    
     
     def save_to_hdf5(self, hdf5_path: Path):
         """Save the configuration and metadata to an HDF5 file."""

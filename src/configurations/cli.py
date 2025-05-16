@@ -3,14 +3,26 @@
 import typer
 from rich.console import Console
 from rich import print as rprint
-from typing import List, Optional
-import numpy as np
-import os
+from typing import Optional
 import re
-import h5py
 from pathlib import Path
+from dotenv import load_dotenv
+import boto3
+import os
 from .configuration import Configuration
-from .models import ConfigurationMeta
+from .models import ConfigurationMeta, State
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Initialize S3 client
+s3_client = boto3.client(
+    's3',
+    endpoint_url=os.getenv('S3_ENDPOINT_URL'),
+    aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+    aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
+    region_name=os.getenv('AWS_REGION', 'us-east-1')
+)
 
 app = typer.Typer(
     name="configurations",
@@ -48,89 +60,89 @@ def process_xyz_file(file_path: Path, pressure: int, temperature: int):
 
 @app.command()
 def create(
-    data_dir: str = typer.Argument(
-        help="Path to the data directory containing P*/T* subdirectories (e.g. './data')"
+    file: str = typer.Argument(
+        help="Path to the xyz file (e.g. 'P150T2400_config_0.xyz')"
     ),
-    output_hdf5: str = typer.Argument(
-        help="Path to the output HDF5 file (e.g. './output.hdf5')"
+    output: str = typer.Argument(
+        help="Directory where to output HDF5 file"
+    ),
+    state: Optional[State] = typer.Option(
+        None,
+        "--state",
+        help="State of the configuration (solid or molten)"
     )
 ):
-    """Create configurations from xyz files in a directory structure.
+    """Create a configuration from a single xyz file.
     
-    The directory structure should be:
-    data_dir/
-        P{pressure}/
-            T{temperature}/
-                *.xyz
+    The filename should be in the format: P{pressure}T{temperature}_config_{number}.xyz
     
     Example usage:
-        configurations create ./data
+        configurations create P150T2400_config_0.xyz ./output --state solid
     """
     try:
-        data_path = Path(data_dir)
-        if not data_path.exists():
-            raise ValueError(f"Directory {data_dir} does not exist")
+        xyz_path = Path(file)
+        if not xyz_path.exists():
+            raise ValueError(f"File {file} does not exist")
         
-        output_path = Path(output_hdf5)
+        output_path = Path(output)
+        if not output_path.exists():
+            output_path.mkdir(parents=True)
+        
         rprint(f"[cyan]Creating HDF5 file at {output_path}...[/cyan]")
-        with h5py.File(output_path, "w") as hdf5_file:
-            for pressure_dir in data_path.glob('P*'):
-                if not pressure_dir.is_dir():
-                    continue
-                try:
-                    pressure = parse_pressure_from_dir(pressure_dir.name)
 
-                    # Process each temperature directory
-                    for temp_dir in pressure_dir.glob('T*'):
-                        if not temp_dir.is_dir():
-                            continue
-                        try:
-                            temperature = parse_temperature_from_dir(temp_dir.name)
+        # Extract pressure and temperature from filename
+        filename = xyz_path.stem  # Get filename without extension
+        pressure_match = re.search(r'P(\d+)', filename)
+        temp_match = re.search(r'T(\d+)', filename)
+        
+        if not pressure_match or not temp_match:
+            raise ValueError(f"Invalid filename format. Expected P{{pressure}}T{{temperature}}_config_{{number}}.xyz")
+        
+        pressure = int(pressure_match.group(1))
+        temperature = int(temp_match.group(1))
+        
+        # Extract config number
+        config_match = re.search(r'config_(\d+)', filename)
+        if not config_match:
+            raise ValueError(f"Invalid filename format. Could not find config number")
+        MDconfig_number = int(config_match.group(1))
 
-                            # Process each xyz file
-                            for xyz_file in temp_dir.glob('*.xyz'):
-                                try:
-                                    #Strip the name to reveal config number the name is of format P{pressure}T{temperature}_config_{config#}.xyz
-                                    MDconfig_number = int(xyz_file.stem.split('_')[-1])  # Get the last part after '_'
-                                    # Create metadata
-                                    meta = ConfigurationMeta(
-                                        pressure=pressure,
-                                        temperature=temperature,
-                                        config_number=-100+MDconfig_number,
-                                        state=None,  # Add logic to determine state if needed
-                                        MD_type="MD_classical"  # Replace with actual MD type if available
-                                    )
+        # Create metadata
+        meta = ConfigurationMeta(
+            pressure=pressure,
+            temperature=temperature,
+            config_number=-100+MDconfig_number,
+            state=state,
+            MD_type="MD_classical"
+        )
 
-                                    # Create configuration
-                                    config = Configuration(xyz_file, meta)
-                                    rprint(f"[green]Processing {xyz_file}...[/green]")
+        # Create configuration
+        config = Configuration(xyz_path, meta)
+        rprint(f"[green]Processing {xyz_path}...[/green]")
 
-                                    # Save configuration to HDF5
-                                    group_name = f"P{pressure}/T{temperature}"
-                                    group = hdf5_file.require_group(group_name)
+        hdf5_file = output_path / f"P{pressure}T{temperature}_config_{MDconfig_number}.hdf5"
 
-                                    # Save metadata
-                                    group.attrs["pressure"] = meta.pressure
-                                    group.attrs["temperature"] = meta.temperature
-                                    group.attrs["state"] = meta.state.value if meta.state else "N/A"
-                                    group.attrs["MD_type"] = meta.MD_type
+        # Delete HDF5 file if it exists
+        if hdf5_file.exists():
+            hdf5_file.unlink()
+            rprint(f"[yellow]Deleted existing HDF5 file at {hdf5_file}[/yellow]")
 
-                                    # Save XYZ file content
-                                    with open(xyz_file, "r") as xyz:
-                                        group.create_dataset("xyz_data", data=xyz.read())
-
-                                except Exception as e:
-                                    rprint(f"[red]Error processing file {xyz_file}: {str(e)}[/red]")
-
-                        except ValueError as e:
-                            rprint(f"[yellow]Skipping directory {temp_dir}: {str(e)}[/yellow]")
-                            continue
-
-                except ValueError as e:
-                    rprint(f"[yellow]Skipping directory {pressure_dir}: {str(e)}[/yellow]")
-                    continue
-
-        rprint(f"[green]HDF5 file created successfully at {output_path}[/green]")
+        # Save configuration to HDF5
+        config.save_to_hdf5(hdf5_file)
+        rprint(f"[green]HDF5 file created successfully at {hdf5_file}[/green]")
+        
+        # Upload to S3
+        bucket = os.getenv('BUCKET')
+        prefix = os.getenv('PREFIX', '')
+        if bucket:
+            s3_key = f"{prefix}/{config.s3_key}" if prefix else config.s3_key
+            try:
+                s3_client.upload_file(hdf5_file, bucket, s3_key)
+                rprint(f"[green]Successfully uploaded to S3: s3://{bucket}/{s3_key}[/green]")
+            except Exception as e:
+                rprint(f"[red]Failed to upload to S3: {str(e)}[/red]")
+        else:
+            rprint("[yellow]S3_BUCKET environment variable not set, skipping S3 upload[/yellow]")
 
     except Exception as e:
         rprint(f"[red]Error creating HDF5 file: {str(e)}[/red]")

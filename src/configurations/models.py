@@ -4,9 +4,10 @@ from pydantic import BaseModel
 
 class State(str, Enum):
     SOLID = "solid"
-    LIQUID = "liquid"
+    MOLTEN = "molten"
 
 class ConfigurationMeta(BaseModel):
+    config_number: Optional[int] = None
     pressure: Optional[int] = None
     temperature: Optional[int] = None
     state: Optional[State] = None
