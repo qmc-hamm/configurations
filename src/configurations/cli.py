@@ -9,6 +9,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 import boto3
 import os
+import s3fs
+import h5py
 from .configuration import Configuration
 from .models import ConfigurationMeta, State
 
@@ -152,6 +154,47 @@ def create(
 def list():
     """List all configurations."""
     rprint("Listing all configurations...")
+
+@app.command()
+def catalog():
+    """List all HDF5 configurations in the S3 bucket and their group attributes."""
+    try:
+        bucket = os.getenv('BUCKET')
+        prefix = os.getenv('PREFIX', '')
+        
+        if not bucket:
+            rprint("[red]BUCKET environment variable not set[/red]")
+            raise typer.Exit(1)
+            
+        rprint(f"[cyan]Listing HDF5 files and their attributes in s3://{bucket}/{prefix}...[/cyan]")
+        
+        # Initialize s3fs
+        fs = s3fs.S3FileSystem(
+            endpoint_url=os.getenv('S3_ENDPOINT_URL'),
+            key=os.getenv('AWS_ACCESS_KEY_ID'),
+            secret=os.getenv('AWS_SECRET_ACCESS_KEY')
+        )
+        
+        # List objects in the bucket with the prefix
+        paginator = s3_client.get_paginator('list_objects_v2')
+        for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+            if 'Contents' in page:
+                for obj in page['Contents']:
+                    key = obj['Key']
+                    if key.endswith('.hdf5'):
+                        try:
+                            rprint(f"\n[bold green]{key}[/bold green]")
+                            attributes = Configuration.read_hdf5_attributes(bucket, key, fs)
+                            for group_name, group_attrs in attributes.items():
+                                rprint(f"  [yellow]Group: {group_name}[/yellow]")
+                                for attr_name, attr_value in group_attrs.items():
+                                    rprint(f"    {attr_name}: {attr_value}")
+                        except Exception as e:
+                            rprint(f"[red]Error reading {key}: {str(e)}[/red]")
+                        
+    except Exception as e:
+        rprint(f"[red]Error listing S3 files: {str(e)}[/red]")
+        raise typer.Exit(1)
 
 if __name__ == "__main__":
     app() 

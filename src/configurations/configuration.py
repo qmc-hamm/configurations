@@ -3,6 +3,7 @@ from rich.console import Console
 from rich.panel import Panel
 import h5py
 from .models import ConfigurationMeta
+import s3fs
 
 class Configuration:
     def __init__(self, xyz_path: Path, meta: ConfigurationMeta):
@@ -46,3 +47,26 @@ class Configuration:
             # Save XYZ file content
             with open(self.xyz_path, "r") as xyz_file:
                 group.create_dataset("xyz_data", data=xyz_file.read())
+
+    @staticmethod
+    def read_hdf5_attributes(bucket: str, key: str, fs: s3fs.S3FileSystem) -> dict:
+        """Read all group attributes from an HDF5 file in S3.
+        
+        Args:
+            bucket: S3 bucket name
+            key: S3 object key
+            fs: S3FileSystem instance for accessing S3
+            
+        Returns:
+            A dictionary mapping group names to their attributes
+            
+        Raises:
+            Exception: If there's an error reading the file
+        """
+        s3_path = f"s3://{bucket}/{key}"
+        with fs.open(s3_path, 'rb') as f:
+            with h5py.File(f, 'r') as h5f:
+                attributes = {}
+                for group_name, group in h5f.items():
+                    attributes[group_name] = dict(group.attrs)
+                return attributes
