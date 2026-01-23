@@ -33,6 +33,35 @@ app = typer.Typer(
 )
 console = Console()
 
+
+def extract_run_parameters(run_dir: str) -> tuple[int, int, int]:
+    """
+    Extract pressure, temperature and config number from a run directory path.
+
+    Args:
+        run_dir: Path string like "/Users/.../P150T3200config110"
+
+    Returns:
+        tuple: (pressure, temperature, config_number)
+    """
+    # Get the last part of the path
+    dir_name = Path(run_dir).name
+
+    # Use regex to extract values
+    pressure_match = re.search(r'P(\d+)', dir_name)
+    temp_match = re.search(r'T(\d+)', dir_name)
+    config_match = re.search(r'config(\d+)', dir_name)
+
+    if not all([pressure_match, temp_match, config_match]):
+        raise ValueError(f"Invalid directory format: {dir_name}")
+
+    pressure = int(pressure_match.group(1))
+    temperature = int(temp_match.group(1))
+    config_number = int(config_match.group(1))
+
+    return pressure, temperature, config_number
+
+
 def parse_pressure_from_dir(dir_name: str) -> int:
     """Extract pressure value from directory name (e.g. 'P225' -> 225)."""
     match = re.match(r'P(\d+)', dir_name)
@@ -62,8 +91,11 @@ def process_xyz_file(file_path: Path, pressure: int, temperature: int):
 
 @app.command()
 def create(
-    file: str = typer.Argument(
-        help="Path to the xyz file (e.g. 'P150T2400_config_0.xyz')"
+    run_dir: str = typer.Argument(
+        help="Path to the directory containing run output (i.e. P150T3200config110/)"
+    ),
+    config_dir: str = typer.Argument(
+        help="Path to the directory containing configuration file directories"
     ),
     output: str = typer.Argument(
         help="Directory where to output HDF5 file"
@@ -74,17 +106,27 @@ def create(
         help="State of the configuration (solid or molten)"
     )
 ):
-    """Create a configuration from a single xyz file.
+    """Create a configuration from a single run output directory.
     
-    The filename should be in the format: P{pressure}T{temperature}_config_{number}.xyz
+    The Directory should be in the format: P{pressure}T{temperature}config{number}
     
     Example usage:
-        configurations create P150T2400_config_0.xyz ./output --state solid
+        configurations create P150T3200config110 ./output --state solid
     """
     try:
-        xyz_path = Path(file)
+        run_path = Path(run_dir)
+        if not run_path.exists():
+            raise ValueError(f"Run output directory {run_dir} does not exist")
+
+        config_path = Path(config_dir)
+        if not config_path.exists():
+            raise ValueError(f"Configuration directory {config_dir} does not exist")
+
+        pressure, temperature, config_number = extract_run_parameters(run_dir)
+        rprint(f"[cyan]Pressure:{pressure}, temperature:{temperature}, config:{config_number}...[/cyan]")
+        xyz_path = Path(config_path / f"P{pressure}"/f"T{temperature}" / f"P{pressure}T{temperature}_config_{config_number}.xyz")
         if not xyz_path.exists():
-            raise ValueError(f"File {file} does not exist")
+            raise ValueError(f"File {xyz_path} does not exist")
         
         output_path = Path(output)
         if not output_path.exists():
@@ -92,28 +134,11 @@ def create(
         
         rprint(f"[cyan]Creating HDF5 file at {output_path}...[/cyan]")
 
-        # Extract pressure and temperature from filename
-        filename = xyz_path.stem  # Get filename without extension
-        pressure_match = re.search(r'P(\d+)', filename)
-        temp_match = re.search(r'T(\d+)', filename)
-        
-        if not pressure_match or not temp_match:
-            raise ValueError(f"Invalid filename format. Expected P{{pressure}}T{{temperature}}_config_{{number}}.xyz")
-        
-        pressure = int(pressure_match.group(1))
-        temperature = int(temp_match.group(1))
-        
-        # Extract config number
-        config_match = re.search(r'config_(\d+)', filename)
-        if not config_match:
-            raise ValueError(f"Invalid filename format. Could not find config number")
-        MDconfig_number = int(config_match.group(1))
-
         # Create metadata
         meta = ConfigurationMeta(
             pressure=pressure,
             temperature=temperature,
-            config_number=-100+MDconfig_number,
+            config_number=config_number,
             state=state,
             MD_type="MD_classical"
         )
@@ -122,7 +147,7 @@ def create(
         config = Configuration(xyz_path, meta)
         rprint(f"[green]Processing {xyz_path}...[/green]")
 
-        hdf5_file = output_path / f"P{pressure}T{temperature}_config_{MDconfig_number}.hdf5"
+        hdf5_file = output_path / f"P{pressure}T{temperature}_config_{config_number}.hdf5"
 
         # Delete HDF5 file if it exists
         if hdf5_file.exists():
