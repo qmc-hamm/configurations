@@ -120,14 +120,14 @@ def create(
         rprint(f"[red]Error creating HDF5 file: {str(e)}[/red]")
         raise typer.Exit(1)
 
-@app.command()
-def list():
-    """List all configurations."""
-    rprint("Listing all configurations...")
 
 @app.command()
-def catalog():
-    """List all HDF5 configurations in the S3 bucket and their group attributes."""
+def catalog(
+        catalog_path: Optional[str] = typer.Option("catalog.csv", help="Path to the CSV catalog file")
+):
+    """List all HDF5 configurations in the S3 bucket and their group attributes.
+        Generate a CSV file with all attributes along with the URL to the HDF5 file.
+    """
     try:
         df = None
         bucket = os.getenv('BUCKET')
@@ -138,14 +138,14 @@ def catalog():
             raise typer.Exit(1)
             
         rprint(f"[cyan]Listing HDF5 files and their attributes in s3://{bucket}/{prefix}...[/cyan]")
-        
+
         # Initialize s3fs
         fs = s3fs.S3FileSystem(
             endpoint_url=os.getenv('S3_ENDPOINT_URL'),
             key=os.getenv('AWS_ACCESS_KEY_ID'),
             secret=os.getenv('AWS_SECRET_ACCESS_KEY')
         )
-        
+
         # List objects in the bucket with the prefix
         paginator = s3_client.get_paginator('list_objects_v2')
         for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
@@ -158,15 +158,18 @@ def catalog():
                             attributes = Configuration.read_hdf5_attributes(bucket, key, fs)
                             for attr_name, attr_value in attributes.items():
                                 rprint(f"  {attr_name}: {attr_value}")
+
+                            row_df = pd.DataFrame([attributes], index=[0])
+                            row_df['uri'] = f's3://{bucket}/{key}'
                             if df is None:
-                                df = pd.DataFrame(attributes, index=[0])
+                                df = row_df
                             else:
-                                df = pd.concat([df, pd.DataFrame(attributes)], ignore_index=True)
+                                df = pd.concat([df, row_df], ignore_index=True)
 
                         except Exception as e:
                             rprint(f"[red]Error reading {key}: {str(e)}[/red]")
         rprint(df)
-        df.to_csv('catalog.csv')
+        df.to_csv(catalog_path, index=False)
                         
     except Exception as e:
         rprint(f"[red]Error listing S3 files: {str(e)}[/red]")
