@@ -8,31 +8,31 @@ sys.path.insert(0, 'src')
 from configurations.configuration import parse_xyz_header, Configuration
 
 # Create example HDF5 file
-xyz_path = Path('/projects/illinois/grants/qmchamm/shared/shubhang/aurora_backup/run_2025_05_25/runs/LLPT_261_configs/P150T2000config60/P150T2000config60.xyz')
-output_path = Path('/projects/illinois/grants/qmchamm/shared/shubhang/aurora_backup/database_work/configurations/example.hdf5')
+xyz_path = Path('data/P150T2000config60/P150T2000config60.xyz')
+output_path = Path('output/example.hdf5')
 
 print("Creating example HDF5 file...")
 print(f"Input XYZ: {xyz_path}")
 print(f"Output HDF5: {output_path}")
 
-# Parse metadata from XYZ file
-print("\n1. Parsing metadata from XYZ file...")
-meta = parse_xyz_header(xyz_path)
-print(f"   ✓ Parsed metadata:")
-print(f"     - pressure: {meta.pressure}")
-print(f"     - temperature: {meta.temperature}")
-print(f"     - config_number: {meta.config_number}")
-print(f"     - state: {meta.state}")
+# # Parse metadata from XYZ file
+# print("\n1. Parsing metadata from XYZ file...")
+# meta = parse_xyz_header(xyz_path)
 
 # Create Configuration object
 print("\n2. Creating Configuration object...")
-config = Configuration(xyz_path, meta)
+config = Configuration(xyz_path)
 print(f"   ✓ Configuration created")
 print(f"     - xyz: {config.xyz_path.name}")
 print(f"     - sofk_txt: {config.sofk_txt_path.name if config.sofk_txt_path else 'NOT FOUND'}")
 print(f"     - gofr_txt: {config.gofr_txt_path.name if config.gofr_txt_path else 'NOT FOUND'}")
 print(f"     - sk: {config.sk_path.name if config.sk_path else 'NOT FOUND'}")
-
+print(" ------------- ")
+print(f"   ✓ Parsed metadata:")
+print(f"     - pressure: {config.meta.pressure}")
+print(f"     - temperature: {config.meta.temperature}")
+print(f"     - config_number: {config.meta.config_number}")
+print(f"     - state: {config.meta.state}")
 # Save to HDF5
 print("\n3. Saving to HDF5...")
 config.save_to_hdf5(output_path)

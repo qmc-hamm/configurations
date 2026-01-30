@@ -49,7 +49,7 @@ def parse_xyz_header(xyz_path: Path) -> ConfigurationMeta:
         meta_key = field_mapping.get(info_key, info_key)
         
         # Skip fields that don't exist in ConfigurationMeta
-        if not hasattr(ConfigurationMeta, meta_key):
+        if not meta_key in ConfigurationMeta.model_fields:
             continue
         
         # Type conversion based on field name
@@ -86,15 +86,18 @@ def parse_xyz_header(xyz_path: Path) -> ConfigurationMeta:
     return ConfigurationMeta(**meta_dict)
 
 class Configuration:
-    def __init__(self, xyz_path: Path, meta: ConfigurationMeta):
+    def __init__(self, xyz_path: Path):
         self.xyz_path = xyz_path
-        self.meta = meta
+        self.meta = parse_xyz_header(self.xyz_path)
         
         # Find related files in the same directory
         self.sofk_txt_path = self._find_related_file("_sofk.txt")
         self.gofr_txt_path = self._find_related_file("_gofr.txt")
         self.sk_path = self._find_related_file(".sk")
-    
+    @property
+    def hdf5_filename(self) -> str:
+        return f"P{self.meta.pressure}T{self.meta.temperature}_config_{self.meta.config_number}.hdf5"
+
     def _find_related_file(self, suffix: str) -> Optional[Path]:
         """Find a related file by appending or replacing suffix in the XYZ filename.
         
@@ -134,8 +137,7 @@ class Configuration:
     
     @property
     def s3_key(self) -> str:
-        return f"P{self.meta.pressure}/T{self.meta.temperature}/{self.xyz_path.name}"
-    
+        return f"P{self.meta.pressure}/T{self.meta.temperature}/{self.hdf5_filename}"
     
     def save_to_hdf5(self, hdf5_path: Path):
         """Save the configuration and all related files to an HDF5 file.
@@ -211,7 +213,4 @@ class Configuration:
         s3_path = f"s3://{bucket}/{key}"
         with fs.open(s3_path, 'rb') as f:
             with h5py.File(f, 'r') as h5f:
-                attributes = {}
-                for group_name, group in h5f.items():
-                    attributes[group_name] = dict(group.attrs)
-                return attributes
+                return dict(h5f.attrs)

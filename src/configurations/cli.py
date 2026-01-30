@@ -13,6 +13,7 @@ import s3fs
 import h5py
 from .configuration import Configuration
 from .models import ConfigurationMeta, State
+import pandas as pd
 
 # Load environment variables from .env file
 load_dotenv()
@@ -68,18 +69,13 @@ def create(
     output: str = typer.Argument(
         help="Directory where to output HDF5 file"
     ),
-    state: Optional[State] = typer.Option(
-        None,
-        "--state",
-        help="State of the configuration (solid or molten)"
-    )
 ):
     """Create a configuration from a single xyz file.
     
     The filename should be in the format: P{pressure}T{temperature}_config_{number}.xyz
     
     Example usage:
-        configurations create P150T2400_config_0.xyz ./output --state solid
+        configurations create P150T2400_config_0.xyz ./output
     """
     try:
         xyz_path = Path(file)
@@ -92,37 +88,11 @@ def create(
         
         rprint(f"[cyan]Creating HDF5 file at {output_path}...[/cyan]")
 
-        # Extract pressure and temperature from filename
-        filename = xyz_path.stem  # Get filename without extension
-        pressure_match = re.search(r'P(\d+)', filename)
-        temp_match = re.search(r'T(\d+)', filename)
-        
-        if not pressure_match or not temp_match:
-            raise ValueError(f"Invalid filename format. Expected P{{pressure}}T{{temperature}}_config_{{number}}.xyz")
-        
-        pressure = int(pressure_match.group(1))
-        temperature = int(temp_match.group(1))
-        
-        # Extract config number
-        config_match = re.search(r'config_(\d+)', filename)
-        if not config_match:
-            raise ValueError(f"Invalid filename format. Could not find config number")
-        MDconfig_number = int(config_match.group(1))
-
-        # Create metadata
-        meta = ConfigurationMeta(
-            pressure=pressure,
-            temperature=temperature,
-            config_number=-100+MDconfig_number,
-            state=state,
-            MD_type="MD_classical"
-        )
-
         # Create configuration
-        config = Configuration(xyz_path, meta)
+        config = Configuration(xyz_path)
         rprint(f"[green]Processing {xyz_path}...[/green]")
 
-        hdf5_file = output_path / f"P{pressure}T{temperature}_config_{MDconfig_number}.hdf5"
+        hdf5_file = output_path / config.hdf5_filename
 
         # Delete HDF5 file if it exists
         if hdf5_file.exists():
@@ -159,6 +129,7 @@ def list():
 def catalog():
     """List all HDF5 configurations in the S3 bucket and their group attributes."""
     try:
+        df = None
         bucket = os.getenv('BUCKET')
         prefix = os.getenv('PREFIX', '')
         
@@ -185,12 +156,17 @@ def catalog():
                         try:
                             rprint(f"\n[bold green]{key}[/bold green]")
                             attributes = Configuration.read_hdf5_attributes(bucket, key, fs)
-                            for group_name, group_attrs in attributes.items():
-                                rprint(f"  [yellow]Group: {group_name}[/yellow]")
-                                for attr_name, attr_value in group_attrs.items():
-                                    rprint(f"    {attr_name}: {attr_value}")
+                            for attr_name, attr_value in attributes.items():
+                                rprint(f"  {attr_name}: {attr_value}")
+                            if df is None:
+                                df = pd.DataFrame(attributes, index=[0])
+                            else:
+                                df = pd.concat([df, pd.DataFrame(attributes)], ignore_index=True)
+
                         except Exception as e:
                             rprint(f"[red]Error reading {key}: {str(e)}[/red]")
+        rprint(df)
+        df.to_csv('catalog.csv')
                         
     except Exception as e:
         rprint(f"[red]Error listing S3 files: {str(e)}[/red]")
