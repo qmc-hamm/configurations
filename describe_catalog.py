@@ -1,36 +1,30 @@
 #!/usr/bin/env python
 """Script to read and describe the intake catalog."""
-import os
 
 import h5py
-import intake
-import s3fs
-from dotenv import load_dotenv
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-# Load environment variables from .env file
-load_dotenv()
-
-# Initialize s3fs to allow access to hdf5 files in S3
-fs = s3fs.S3FileSystem(
-    endpoint_url=os.getenv('S3_ENDPOINT_URL'),
-    key=os.getenv('AWS_ACCESS_KEY_ID'),
-    secret=os.getenv('AWS_SECRET_ACCESS_KEY')
-)
+from qmc_repo.repo import Repo
 
 console = Console()
 
-# Load the catalog
-catalog = intake.open_catalog('s3://phy240060/configurations/configurations.yaml',
-                              storage_options={
-                                  'anon': False,  # Set to True for public buckets
-                                  'endpoint_url':  os.getenv('S3_ENDPOINT_URL')}
-                              )
+# Connect to the repository
+repo = Repo()
+
+# List all of the catalog entries
+table = Table(title="Catalog Entries", expand=True, show_lines=True)
+table.add_column("Name", style="cyan", justify="right")
+table.add_column("Description", style="magenta", justify="left")
+table.add_column("Version", style="yellow", justify="right")
+for entry in repo.entries:
+    source = repo.get_source(entry)
+    table.add_row(entry, source.description, source.metadata.get("version", "-"))
+console.print(table)
 
 # Use version 1.0 of the hydrogen source
-source = catalog.hydrogen_v1
+source = repo.hydrogen_v1
 
 # Display source info in a panel
 source_info = (
@@ -65,7 +59,7 @@ table.add_column("Potential Energy (eV)", style="red", justify="right")
 table.add_column("Datasets", style="dim")
 
 for row in high_pressure.itertuples():
-    with fs.open(row.uri, 'rb') as f:
+    with repo.fs.open(row.uri, 'rb') as f:
         with h5py.File(f, 'r') as h5f:
             attrs = dict(h5f.attrs)
             datasets = list(h5f.keys())
