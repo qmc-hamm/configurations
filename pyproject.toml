@@ -36,7 +36,7 @@ dev = [
 configurations = "configurations.cli:app"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/configurations"]
+packages = ["src/configurations", "src/qmc_repo"]
 
 [tool.hatch.envs.default]
 dependencies = [
