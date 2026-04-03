@@ -315,7 +315,7 @@ def _write_method_file(
     with h5py.File(out_h5, "w") as h5f:
         # Root attrs (indexable metadata)
         h5f.attrs["system"] = run_folder.name
-        h5f.attrs["formula"] = str(xyz_data["formula"])
+        h5f.attrs["name_in_system"] = old_uuid
         h5f.attrs["natoms"] = natoms
         h5f.attrs["species"] = np.array(_decode_species(xyz_data["symbols"]), dtype="S")
         h5f.attrs["calculation_type"] = "qmc"
@@ -327,7 +327,7 @@ def _write_method_file(
         h5f.attrs["pressure"] = float(info.get("pressure", np.nan))
         h5f.attrs["creation_date"] = creation_date
         h5f.attrs["uuid"] = _unique_hex_uuid(old_uuid, method_upper)
-        h5f.attrs["original_uuid"] = old_uuid
+        h5f.attrs["uuid_in_system"] = old_uuid
         h5f.attrs["config_number"] = config_number
         h5f.attrs["mixed_estimator_available"] = mixed_est
         h5f.attrs["starting_configuration_model_name"] = model_name
